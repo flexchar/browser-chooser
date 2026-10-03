@@ -25,6 +25,33 @@ final class BrowserChooserTests: XCTestCase {
         XCTAssertEqual(ProfileDiscovery().allProfiles().last, BrowserProfile(browser: .safari, directory: nil, name: "Safari"))
     }
 
+    func testPersonalShortcutOrderAndRoutingStayBoundToProfileDirectories() {
+        let profiles = [
+            BrowserProfile(browser: .chrome, directory: "Profile 2", name: "DS-TTA"),
+            BrowserProfile(browser: .chrome, directory: "Profile 3", name: "Heat Harmony"),
+            BrowserProfile(browser: .chrome, directory: "Default", name: "JOE & THE JUICE"),
+            BrowserProfile(browser: .chrome, directory: "Profile 4", name: "lvc.dk"),
+            BrowserProfile(browser: .chrome, directory: "Profile 6", name: "PadelYard"),
+            BrowserProfile(browser: .edge, directory: "Default", name: "Profile 1"),
+            BrowserProfile(browser: .safari, directory: nil, name: "Safari")
+        ]
+        let ordered = ProfilePresentation.ordered(profiles)
+        XCTAssertEqual(ordered.map(\.displayName), [
+            "Edge - Personal", "Chrome - JOE & THE JUICE", "Chrome - DS-TTA",
+            "Chrome - Heat Harmony", "Chrome - lvc.dk", "Chrome - PadelYard", "Safari"
+        ])
+        XCTAssertEqual(ordered.map(\.id), [
+            "edge:Default", "chrome:Default", "chrome:Profile 2", "chrome:Profile 3",
+            "chrome:Profile 4", "chrome:Profile 6", "safari:safari"
+        ])
+        let url = URL(string: "https://example.com")!
+        XCTAssertEqual(BrowserLaunchRequest(url: url, profile: ordered[0]).arguments[4], "--profile-directory=Default")
+        XCTAssertEqual(BrowserLaunchRequest(url: url, profile: ordered[1]).arguments[4], "--profile-directory=Default")
+        let anotherEdge = BrowserProfile(browser: .edge, directory: "Profile 2", name: "Other")
+        XCTAssertEqual(ProfilePresentation.ordered(profiles + [anotherEdge]).last, anotherEdge)
+        XCTAssertEqual(anotherEdge.displayName, "Edge - Other")
+    }
+
     func testChromiumLaunchUsesBundleIdentifierNewInstanceAndExactProfileDirectory() {
         let profile = BrowserProfile(browser: .chrome, directory: "Profile 9", name: "Client")
         let request = BrowserLaunchRequest(url: URL(string: "https://example.com/a")!, profile: profile)

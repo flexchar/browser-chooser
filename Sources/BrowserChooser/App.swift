@@ -80,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if BrowserLauncher.isAvailable(safari) { profiles.append(safari) }
         guard !profiles.isEmpty else { showNoBrowserError(); return }
         let controller = ChooserWindowController(
-            url: url, profiles: profiles, issues: issues,
+            url: url, profiles: ProfilePresentation.ordered(profiles), issues: issues,
             choose: { [weak self] controller, profile in self?.launch(url, in: profile, from: controller) },
             closed: { [weak self] controller in self?.chooserDidClose(controller) }
         )

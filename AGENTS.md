@@ -10,4 +10,5 @@ Lane: 💼
 - After renewing Files & Folders access, fully quit Browser Chooser before testing the signed bundle again. If switches revert, remove only its Files & Folders entry, trigger a fresh folder read, allow Chrome and Edge, then fully quit and relaunch. A running process can retain a denial even after macOS shows the switches on. Do not rebuild just to renew access.
 - GUI testing requires a separate Computer Use approval. Shell builds and unit tests do not prove that a window renders or that browser selection works on screen.
 - Profile display names are required in the chooser UI and may appear during an approved GUI test. Do not log profile account details, email addresses, or IDs, and never read cookies or credentials. Fake profile metadata in tests is fine.
+- Local chooser preference: show Edge `Default` as `Personal` first, Chrome `Default` (JOE & THE JUICE) second, then keep the discovered order. Match by profile directory, keep launch routing unchanged, and never display or store account email addresses.
 - Never remove files with `rm`. Move deletions to macOS Trash with `/usr/bin/trash`.

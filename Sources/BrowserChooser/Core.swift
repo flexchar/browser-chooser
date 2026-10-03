@@ -59,7 +59,20 @@ struct BrowserProfile: Identifiable, Equatable, Sendable {
     let name: String
 
     var id: String { "\(browser.rawValue):\(directory ?? "safari")" }
-    var displayName: String { browser == .safari ? name : "\(browser.displayName) - \(name)" }
+    var displayName: String {
+        if id == "edge:Default" { return "Edge - Personal" }
+        return browser == .safari ? name : "\(browser.displayName) - \(name)"
+    }
+}
+
+enum ProfilePresentation {
+    // These are local profile directories, not account names. Keep routing tied to each directory.
+    private static let preferredIDs = ["edge:Default", "chrome:Default"]
+
+    static func ordered(_ profiles: [BrowserProfile]) -> [BrowserProfile] {
+        preferredIDs.compactMap { id in profiles.first { $0.id == id } } +
+        profiles.filter { !preferredIDs.contains($0.id) }
+    }
 }
 
 enum URLRouter {
@@ -149,7 +162,9 @@ struct ProfileDiscovery {
     }
 
     func allProfiles() -> [BrowserProfile] {
-        BrowserKind.allCases.filter { $0 != .safari }.flatMap { profiles(for: $0) } +
-        [BrowserProfile(browser: .safari, directory: nil, name: "Safari")]
+        ProfilePresentation.ordered(
+            BrowserKind.allCases.filter { $0 != .safari }.flatMap { profiles(for: $0) } +
+            [BrowserProfile(browser: .safari, directory: nil, name: "Safari")]
+        )
     }
 }
