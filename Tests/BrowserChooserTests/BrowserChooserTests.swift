@@ -60,10 +60,22 @@ final class BrowserChooserTests: XCTestCase {
         XCTAssertTrue(gate.begin(second))
     }
 
-    @MainActor func testChooserViewBuildsWithProfileButtons() {
-        let profiles = [BrowserProfile(browser: .safari, directory: nil, name: "Safari")]
-        let chooser = ChooserView(url: URL(string: "https://example.com")!, profiles: profiles, issues: ["Chrome: profile data could not be read"]) { _ in }
-        XCTAssertNotNil(chooser.view)
+    @MainActor func testChooserWindowKeepsSevenProfileButtonsInVisibleContent() throws {
+        let profiles = (1...6).map { BrowserProfile(browser: .chrome, directory: "Profile \($0)", name: "Test \($0)") } +
+            [BrowserProfile(browser: .safari, directory: nil, name: "Safari")]
+        let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: profiles, issues: [], choose: { _, _ in }, closed: { _ in })
+        let window = try XCTUnwrap(chooser.window)
+        let scroll = try XCTUnwrap(window.contentViewController?.view.subviews.compactMap { $0 as? NSScrollView }.first)
+        window.contentView?.layoutSubtreeIfNeeded()
+        scroll.documentView?.layoutSubtreeIfNeeded()
+        let buttons = scroll.documentView?.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton } ?? []
+        XCTAssertEqual(buttons.count, 7)
+        XCTAssertGreaterThanOrEqual(window.contentLayoutRect.height, 400)
+        XCTAssertGreaterThan(scroll.contentView.bounds.height, 350)
+        for button in buttons {
+            let frame = button.convert(button.bounds, to: scroll.documentView)
+            XCTAssertTrue(scroll.documentVisibleRect.intersects(frame), "\(button.title) is outside the visible chooser")
+        }
     }
 
     func testProfileInspectionReportsUnreadableDataWithoutNames() throws {

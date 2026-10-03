@@ -183,14 +183,14 @@ final class ChooserWindowController: NSWindowController {
         let window = NSWindow(contentViewController: NSViewController())
         window.title = "Choose a browser"
         window.styleMask = [.titled, .closable]
-        window.setContentSize(NSSize(width: 460, height: min(600, max(190, 112 + profiles.count * 42 + issues.count * 28))))
-        window.center()
         super.init(window: window)
         window.delegate = self
         window.contentViewController = ChooserView(url: url, profiles: profiles, issues: issues) { [weak self] profile in
             guard let self else { return }
             self.choose(self, profile)
         }
+        window.setContentSize(NSSize(width: 460, height: min(600, max(190, 112 + profiles.count * 42 + issues.count * 28))))
+        window.center()
     }
 
     required init?(coder: NSCoder) { nil }
