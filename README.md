@@ -23,7 +23,9 @@ This runs the app bundle directly with `https://example.com`. No URL handler is 
 
 The app queues incoming links, so each link gets its own chooser. A failed browser launch leaves the chooser open for another selection. Chromium launches use the exact profile directory with `/usr/bin/open`; Safari is targeted by its bundle identifier.
 
-Chrome and Edge profile data lives in folders protected by macOS. If the chooser says it cannot read profiles, allow **Browser Chooser** access to the corresponding browser folder in **System Settings > Privacy & Security > Files & Folders**, then reopen it. Earlier ad-hoc builds used a changing code hash, so a grant made to one of those builds may need to be granted again for the signed app. The build script now uses a stable certificate identity so subsequent builds retain the same designated requirement.
+Chrome and Edge profile data lives in folders protected by macOS. If the chooser says it cannot read profiles, open **System Settings > Privacy & Security > Files & Folders** and allow **Browser Chooser** access to both browser folders. If the switches do not stick, remove only the Browser Chooser entry there, open a link with the app to trigger a fresh access request, then allow both folders. Fully quit Browser Chooser and launch it again after changing access; an already running process can keep the earlier denial. Earlier ad-hoc builds used a changing code hash, so a grant made to one of those builds may need renewal for the signed app. The build script now uses a stable certificate identity so subsequent builds retain the same designated requirement.
+
+The local trial verified that the chooser lists Chrome and Edge profiles plus Safari, opens the exact requested URL in the selected Chrome work and consulting profiles and Edge profile, rejects custom schemes, and cancels with Escape. These checks used the signed bundle without registering it as the default browser.
 
 ## Default browser setup
 
