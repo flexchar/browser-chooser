@@ -27,6 +27,18 @@ Chrome and Edge profile data lives in folders protected by macOS. If the chooser
 
 The local trial verified that the chooser lists Chrome and Edge profiles plus Safari, opens the exact requested URL in the selected Chrome work and consulting profiles and Edge profile, rejects custom schemes, and cancels with Escape. These checks used the signed bundle without registering it as the default browser.
 
-## Default browser setup
+## Install and choose as default
 
-The bundle declares `http` and `https` support, but this repository does not register it as a handler or change the system default. Setting it as the default web browser is a separate, explicit manual choice in macOS settings.
+After building, quit Browser Chooser and install the signed bundle:
+
+```sh
+timeout 300 ./scripts/install-app.sh
+```
+
+The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. It does not change the default browser. Confirm link delivery before making it the default:
+
+```sh
+timeout 300 /usr/bin/open -a '/Applications/Browser Chooser.app' 'https://example.com/?browser-chooser=handoff-test'
+```
+
+The chooser should display `example.com`, with Edge `Personal` first and the Chrome `Default` profile (JOE & THE JUICE) second when those profiles exist. Test a selection and confirm the link opens in the chosen profile. Then select **Browser Chooser** under **System Settings > Desktop & Dock > Default web browser**. macOS should send normal `http` and `https` links to the chooser. Custom schemes keep their existing handlers.
