@@ -41,7 +41,7 @@ staged_app="$staging_dir/Browser Chooser.app"
 if [[ -e "$installed_app" ]]; then
   /usr/bin/trash "$installed_app"
 fi
-/usr/bin/mv "$staged_app" "$installed_app"
+/bin/mv "$staged_app" "$installed_app"
 /usr/bin/codesign --verify --strict "$installed_app"
 "$lsregister" -f "$installed_app"
 print "Installed and registered: $installed_app"
