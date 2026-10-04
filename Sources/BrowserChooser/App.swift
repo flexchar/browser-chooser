@@ -189,8 +189,11 @@ final class ChooserWindowController: NSWindowController {
             guard let self else { return }
             self.choose(self, profile)
         }
-        window.setContentSize(NSSize(width: 460, height: min(600, max(190, 112 + profiles.count * 42 + issues.count * 28))))
-        window.center()
+        window.setContentSize(NSSize(width: 360, height: min(520, 90 + profiles.count * 34 + issues.count * 24)))
+        let pointer = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(pointer) }) ?? NSScreen.main ?? NSScreen.screens.first {
+            window.setFrame(ChooserPlacement.frame(for: window.frame.size, near: pointer, in: screen.visibleFrame), display: false)
+        }
     }
 
     required init?(coder: NSCoder) { nil }
@@ -202,6 +205,25 @@ final class ChooserWindowController: NSWindowController {
     }
 
     func finishLaunch() { isLaunching = false }
+}
+
+enum ChooserPlacement {
+    static func frame(for size: NSSize, near pointer: NSPoint, in visibleFrame: NSRect) -> NSRect {
+        let margin: CGFloat = 12
+        let width = min(size.width, max(0, visibleFrame.width - 2 * margin))
+        let height = min(size.height, max(0, visibleFrame.height - 2 * margin))
+        let right = pointer.x + margin
+        let left = pointer.x - margin - width
+        let below = pointer.y - margin - height
+        let above = pointer.y + margin
+        let x = right + width <= visibleFrame.maxX - margin ? right : left
+        let y = below >= visibleFrame.minY + margin ? below : above
+        return NSRect(
+            x: min(max(x, visibleFrame.minX + margin), visibleFrame.maxX - margin - width),
+            y: min(max(y, visibleFrame.minY + margin), visibleFrame.maxY - margin - height),
+            width: width, height: height
+        )
+    }
 }
 
 extension ChooserWindowController: NSWindowDelegate {
@@ -221,7 +243,7 @@ final class ChooserView: NSViewController {
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
+        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         let heading = NSTextField(labelWithString: "Open link from \(URLRouter.hostLabel(for: url))")
         heading.font = .systemFont(ofSize: 16, weight: .semibold)
@@ -258,10 +280,10 @@ final class ChooserView: NSViewController {
         document.addSubview(stack)
         scroll.documentView = document
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 22),
-            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -22),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -14),
             heading.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor)
         ])

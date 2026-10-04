@@ -97,12 +97,33 @@ final class BrowserChooserTests: XCTestCase {
         scroll.documentView?.layoutSubtreeIfNeeded()
         let buttons = scroll.documentView?.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton } ?? []
         XCTAssertEqual(buttons.count, 7)
-        XCTAssertGreaterThanOrEqual(window.contentLayoutRect.height, 400)
-        XCTAssertGreaterThan(scroll.contentView.bounds.height, 350)
+        XCTAssertEqual(window.contentLayoutRect.width, 360)
+        XCTAssertLessThan(window.contentLayoutRect.height, 360)
         for button in buttons {
             let frame = button.convert(button.bounds, to: scroll.documentView)
-            XCTAssertTrue(scroll.documentVisibleRect.intersects(frame), "\(button.title) is outside the visible chooser")
+            XCTAssertTrue(scroll.documentVisibleRect.contains(frame), "\(button.title) is outside the visible chooser")
         }
+    }
+
+    func testChooserPlacementPrefersBelowRightAndFlipsAtScreenEdges() {
+        let screen = NSRect(x: -1920, y: -200, width: 1920, height: 1080)
+        let size = NSSize(width: 360, height: 360)
+        let middle = ChooserPlacement.frame(for: size, near: NSPoint(x: -1000, y: 500), in: screen)
+        XCTAssertEqual(middle.origin, NSPoint(x: -988, y: 128))
+        let bottomRight = ChooserPlacement.frame(for: size, near: NSPoint(x: -20, y: -180), in: screen)
+        XCTAssertEqual(bottomRight.origin, NSPoint(x: -392, y: -168))
+        XCTAssertTrue(screen.contains(bottomRight))
+        let topLeft = ChooserPlacement.frame(for: size, near: NSPoint(x: -1900, y: 860), in: screen)
+        XCTAssertEqual(topLeft.origin, NSPoint(x: -1888, y: 488))
+        XCTAssertTrue(screen.contains(topLeft))
+    }
+
+    func testChooserPlacementFitsWithinSmallVisibleFrame() {
+        let screen = NSRect(x: 400, y: 100, width: 300, height: 250)
+        let frame = ChooserPlacement.frame(for: NSSize(width: 360, height: 400), near: NSPoint(x: 690, y: 110), in: screen)
+        XCTAssertEqual(frame.size, NSSize(width: 276, height: 226))
+        XCTAssertEqual(frame.origin, NSPoint(x: 412, y: 112))
+        XCTAssertTrue(screen.contains(frame))
     }
 
     func testProfileInspectionReportsUnreadableDataWithoutNames() throws {
