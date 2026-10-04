@@ -35,7 +35,7 @@ After building, quit Browser Chooser and install the signed bundle:
 timeout 300 ./scripts/install-app.sh
 ```
 
-The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. It does not change the default browser. Confirm link delivery before making it the default:
+The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. The bundle also declares an alternate HTML viewer role so macOS can list it in the default browser menu. The app accepts web links only; this declaration does not set an HTML file default or add another URL scheme. The script does not change the default browser. Confirm link delivery before making it the default:
 
 ```sh
 timeout 300 /usr/bin/open -a '/Applications/Browser Chooser.app' 'https://example.com/?browser-chooser=handoff-test'
