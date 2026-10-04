@@ -35,10 +35,10 @@ After building, quit Browser Chooser and install the signed bundle:
 timeout 300 ./scripts/install-app.sh
 ```
 
-The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. The bundle also declares an alternate HTML viewer role so macOS can list it in the default browser menu. The app accepts web links only; this declaration does not set an HTML file default or add another URL scheme. The script does not change the default browser. Confirm link delivery before making it the default:
+The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. The bundle also declares an alternate HTML viewer role, but this Mac still did not list it in the System Settings default browser menu. The app accepts web links only. The script does not change defaults. Confirm link delivery before making it the default:
 
 ```sh
 timeout 300 /usr/bin/open -a '/Applications/Browser Chooser.app' 'https://example.com/?browser-chooser=handoff-test'
 ```
 
-The chooser should display `example.com`, with Edge `Personal` first and the Chrome `Default` profile (JOE & THE JUICE) second when those profiles exist. Test a selection and confirm the link opens in the chosen profile. Then select **Browser Chooser** under **System Settings > Desktop & Dock > Default web browser**. macOS should send normal `http` and `https` links to the chooser. Custom schemes keep their existing handlers.
+The chooser should display `example.com`, with Edge `Personal` first and the Chrome `Default` profile (JOE & THE JUICE) second when those profiles exist. Test a selection and confirm the link opens in the chosen profile. On this Mac, the default was set for `http` and `https` through `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:completion:)`; the Settings menu did not offer Browser Chooser. macOS also changed the HTML file association, which was restored to Browserosaurus through Finder's **Get Info > Open with > Change All**. Final readback confirmed both web schemes route to Browser Chooser, HTML files still open with Browserosaurus, and custom schemes were untouched.
