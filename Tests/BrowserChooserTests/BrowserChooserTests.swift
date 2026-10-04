@@ -115,6 +115,38 @@ final class BrowserChooserTests: XCTestCase {
         }
     }
 
+    @MainActor func testChooserRowsUseAlignedBrowserAndProfileColumns() throws {
+        let profiles = [
+            BrowserProfile(browser: .edge, directory: "Default", name: "Profile 1"),
+            BrowserProfile(browser: .chrome, directory: "Default", name: "JOE & THE JUICE"),
+            BrowserProfile(browser: .safari, directory: nil, name: "Safari")
+        ]
+        let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: profiles, issues: [], choose: { _, _ in }, closed: { _ in })
+        let window = try XCTUnwrap(chooser.window)
+        window.contentView?.layoutSubtreeIfNeeded()
+        let scroll = try XCTUnwrap(window.contentViewController?.view.subviews.compactMap { $0 as? NSScrollView }.first)
+        scroll.documentView?.layoutSubtreeIfNeeded()
+        let rows = try XCTUnwrap((scroll.documentView as? NSStackView)?.arrangedSubviews.compactMap { $0 as? NSButton })
+        XCTAssertEqual(rows.count, 3)
+
+        func column(_ name: String, in row: NSButton) throws -> NSTextField {
+            try XCTUnwrap(row.subviews.compactMap { $0 as? NSTextField }.first { $0.identifier?.rawValue == name })
+        }
+        let numbers = try rows.map { try column("shortcut", in: $0) }
+        let browsers = try rows.map { try column("browser", in: $0) }
+        let names = try rows.map { try column("profile", in: $0) }
+        XCTAssertEqual(numbers.map(\.stringValue), ["1.", "2.", "3."])
+        XCTAssertEqual(browsers.map(\.stringValue), ["Edge", "Chrome", "Safari"])
+        XCTAssertEqual(names.map(\.stringValue), ["Personal", "JOE & THE JUICE", ""])
+        XCTAssertEqual(Set(numbers.map { $0.frame.minX }).count, 1)
+        XCTAssertEqual(Set(browsers.map { $0.frame.minX }).count, 1)
+        XCTAssertEqual(Set(names.map { $0.frame.minX }).count, 1)
+        XCTAssertLessThan(numbers[0].frame.minX, browsers[0].frame.minX)
+        XCTAssertLessThan(browsers[0].frame.minX, names[0].frame.minX)
+        XCTAssertGreaterThanOrEqual(names[1].frame.width, names[1].intrinsicContentSize.width)
+        XCTAssertEqual(window.contentLayoutRect.size, NSSize(width: 296, height: 137))
+    }
+
     @MainActor func testLongChooserStartsAtFirstProfiles() throws {
         let profiles = (1...10).map { BrowserProfile(browser: .chrome, directory: "Profile \($0)", name: "Test \($0)") }
         let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: profiles, issues: [], choose: { _, _ in }, closed: { _ in })

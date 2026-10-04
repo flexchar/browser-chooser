@@ -226,12 +226,30 @@ private final class ChooserRowButton: NSButton {
         setAccessibilityLabel(profile.displayName)
         translatesAutoresizingMaskIntoConstraints = false
 
-        let name = NSTextField(labelWithString: profile.menuName)
-        name.font = .systemFont(ofSize: 13, weight: .medium)
-        name.textColor = .white
-        name.lineBreakMode = .byTruncatingTail
-        name.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(name)
+        let number = NSTextField(labelWithString: shortcut.map { "\($0)." } ?? "")
+        number.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        number.textColor = NSColor(calibratedWhite: 0.78, alpha: 1)
+        number.alignment = .left
+        number.identifier = NSUserInterfaceItemIdentifier("shortcut")
+        number.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(number)
+
+        let browser = NSTextField(labelWithString: profile.browser.displayName)
+        browser.font = .systemFont(ofSize: 13, weight: .medium)
+        browser.textColor = .white
+        browser.alignment = .left
+        browser.identifier = NSUserInterfaceItemIdentifier("browser")
+        browser.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(browser)
+
+        let profileName = NSTextField(labelWithString: profile.browser == .safari ? "" : profile.menuName)
+        profileName.font = .systemFont(ofSize: 13, weight: .medium)
+        profileName.textColor = .white
+        profileName.alignment = .left
+        profileName.lineBreakMode = .byTruncatingTail
+        profileName.identifier = NSUserInterfaceItemIdentifier("profile")
+        profileName.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(profileName)
 
         let icon = NSImageView()
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: profile.browser.bundleIdentifier) {
@@ -241,30 +259,16 @@ private final class ChooserRowButton: NSButton {
         icon.translatesAutoresizingMaskIntoConstraints = false
         addSubview(icon)
 
-        var nameTrailing = icon.leadingAnchor
-        if let shortcut {
-            let badge = NSTextField(labelWithString: String(shortcut))
-            badge.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
-            badge.textColor = NSColor(calibratedWhite: 0.84, alpha: 1)
-            badge.alignment = .center
-            badge.wantsLayer = true
-            badge.layer?.cornerRadius = 4
-            badge.layer?.borderWidth = 1
-            badge.layer?.borderColor = NSColor(calibratedWhite: 1, alpha: 0.22).cgColor
-            badge.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(badge)
-            NSLayoutConstraint.activate([
-                badge.trailingAnchor.constraint(equalTo: icon.leadingAnchor, constant: -10),
-                badge.centerYAnchor.constraint(equalTo: centerYAnchor),
-                badge.widthAnchor.constraint(equalToConstant: 21),
-                badge.heightAnchor.constraint(equalToConstant: 20)
-            ])
-            nameTrailing = badge.leadingAnchor
-        }
         NSLayoutConstraint.activate([
-            name.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            name.trailingAnchor.constraint(lessThanOrEqualTo: nameTrailing, constant: -10),
-            name.centerYAnchor.constraint(equalTo: centerYAnchor),
+            number.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            number.centerYAnchor.constraint(equalTo: centerYAnchor),
+            number.widthAnchor.constraint(equalToConstant: 20),
+            browser.leadingAnchor.constraint(equalTo: number.trailingAnchor, constant: 3),
+            browser.centerYAnchor.constraint(equalTo: centerYAnchor),
+            browser.widthAnchor.constraint(equalToConstant: 59),
+            profileName.leadingAnchor.constraint(equalTo: browser.trailingAnchor, constant: 9),
+            profileName.trailingAnchor.constraint(equalTo: icon.leadingAnchor, constant: -7),
+            profileName.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -13),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 20),
