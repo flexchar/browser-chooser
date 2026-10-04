@@ -63,6 +63,8 @@ struct BrowserProfile: Identifiable, Equatable, Sendable {
         if id == "edge:Default" { return "Edge - Personal" }
         return browser == .safari ? name : "\(browser.displayName) - \(name)"
     }
+
+    var menuName: String { id == "edge:Default" ? "Personal" : name }
 }
 
 enum ProfilePresentation {

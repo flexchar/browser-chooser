@@ -40,6 +40,9 @@ final class BrowserChooserTests: XCTestCase {
             "Edge - Personal", "Chrome - JOE & THE JUICE", "Chrome - DS-TTA",
             "Chrome - Heat Harmony", "Chrome - lvc.dk", "Chrome - PadelYard", "Safari"
         ])
+        XCTAssertEqual(ordered.map(\.menuName), [
+            "Personal", "JOE & THE JUICE", "DS-TTA", "Heat Harmony", "lvc.dk", "PadelYard", "Safari"
+        ])
         XCTAssertEqual(ordered.map(\.id), [
             "edge:Default", "chrome:Default", "chrome:Profile 2", "chrome:Profile 3",
             "chrome:Profile 4", "chrome:Profile 6", "safari:safari"
@@ -95,14 +98,39 @@ final class BrowserChooserTests: XCTestCase {
         let scroll = try XCTUnwrap(window.contentViewController?.view.subviews.compactMap { $0 as? NSScrollView }.first)
         window.contentView?.layoutSubtreeIfNeeded()
         scroll.documentView?.layoutSubtreeIfNeeded()
-        let buttons = scroll.documentView?.subviews.compactMap { $0 as? NSStackView }.flatMap(\.arrangedSubviews).compactMap { $0 as? NSButton } ?? []
+        let buttons = (scroll.documentView as? NSStackView)?.arrangedSubviews.compactMap { $0 as? NSButton } ?? []
         XCTAssertEqual(buttons.count, 7)
-        XCTAssertEqual(window.contentLayoutRect.width, 360)
-        XCTAssertLessThan(window.contentLayoutRect.height, 360)
+        XCTAssertEqual(window.styleMask, .borderless)
+        XCTAssertTrue(window.canBecomeKey)
+        XCTAssertEqual(window.title, "Choose a browser")
+        XCTAssertEqual(window.contentLayoutRect.size, NSSize(width: 296, height: 265))
         for button in buttons {
             let frame = button.convert(button.bounds, to: scroll.documentView)
             XCTAssertTrue(scroll.documentVisibleRect.contains(frame), "\(button.title) is outside the visible chooser")
+            for child in button.subviews {
+                let childCenter = NSPoint(x: child.bounds.midX, y: child.bounds.midY)
+                let point = child.convert(childCenter, to: scroll.documentView)
+                XCTAssertTrue(scroll.documentView?.hitTest(point) === button, "Row child intercepted a click")
+            }
         }
+    }
+
+    @MainActor func testLongChooserStartsAtFirstProfiles() throws {
+        let profiles = (1...10).map { BrowserProfile(browser: .chrome, directory: "Profile \($0)", name: "Test \($0)") }
+        let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: profiles, issues: [], choose: { _, _ in }, closed: { _ in })
+        let window = try XCTUnwrap(chooser.window)
+        let scroll = try XCTUnwrap(window.contentViewController?.view.subviews.compactMap { $0 as? NSScrollView }.first)
+        window.contentView?.layoutSubtreeIfNeeded()
+        scroll.documentView?.layoutSubtreeIfNeeded()
+        let rows = try XCTUnwrap((scroll.documentView as? NSStackView)?.arrangedSubviews)
+        XCTAssertEqual(rows.count, 10)
+        XCTAssertEqual(window.contentLayoutRect.height, 265)
+        let first = rows[0].convert(rows[0].bounds, to: scroll.documentView)
+        let seventh = rows[6].convert(rows[6].bounds, to: scroll.documentView)
+        let last = rows[9].convert(rows[9].bounds, to: scroll.documentView)
+        XCTAssertTrue(scroll.documentVisibleRect.contains(first), "The first prioritized profile must be visible")
+        XCTAssertTrue(scroll.documentVisibleRect.contains(seventh), "Seven rows should fit without scrolling")
+        XCTAssertFalse(scroll.documentVisibleRect.intersects(last), "Later profiles should start below the fold")
     }
 
     func testChooserPlacementPrefersBelowRightAndFlipsAtScreenEdges() {

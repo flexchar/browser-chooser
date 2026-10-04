@@ -12,4 +12,5 @@ Lane: 💼
 - Profile display names are required in the chooser UI and may appear during an approved GUI test. Do not log profile account details, email addresses, or IDs, and never read cookies or credentials. Fake profile metadata in tests is fine.
 - Local chooser preference: show Edge `Default` as `Personal` first, Chrome `Default` (JOE & THE JUICE) second, then keep the discovered order. Match by profile directory, keep launch routing unchanged, and never display or store account email addresses.
 - Keep the chooser compact and place it beside the mouse pointer on that display, within its visible area. Avoid centering it on the screen.
+- Use a small floating menu with slim profile rows, browser icons, numbered shortcut badges and a destination footer. Keep the title bar and large heading out of the chooser.
 - Never remove files with `rm`. Move deletions to macOS Trash with `/usr/bin/trash`.
