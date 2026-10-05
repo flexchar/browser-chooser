@@ -64,7 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let index = args.firstIndex(of: "--explain-route"), args.count > index + 1 {
             guard let url = URLRouter.validatedWebURL(from: ["BrowserChooser", args[index + 1]]) else { fputs("Invalid web URL\n", stderr); exit(2) }
             let decision = routeDecision(for: url, profiles: availableProfiles().profiles)
-            print(decision.profile.map { "\(URLRouter.hostLabel(for: url)) → \($0.id)" } ?? "\(URLRouter.hostLabel(for: url)) → chooser\(decision.issue.map { " (\($0))" } ?? "")")
+            let destination = SafeLinkRouting.destination(for: url)
+            let label = destination.map { URLRouter.hostLabel(for: $0.url) + ($0.isSafeLink ? " (via Safe Link)" : "") } ?? URLRouter.hostLabel(for: url)
+            print(decision.profile.map { "\(label) → \($0.id)" } ?? "\(label) → chooser\(decision.issue.map { " (\($0))" } ?? "")")
             NSApp.terminate(nil); return
         }
         if let url = URLRouter.validatedWebURL(from: CommandLine.arguments) {
@@ -217,7 +219,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func routeDecision(for url: URL, profiles: [BrowserProfile]) -> (profile: BrowserProfile?, issue: String?) {
-        guard let rule = RuleRouting.matchingRule(for: url, in: ruleStore.load()) else { return (nil, nil) }
+        guard let destination = SafeLinkRouting.destination(for: url),
+              let rule = RuleRouting.matchingRule(for: destination.url, in: ruleStore.load()) else { return (nil, nil) }
         guard let profile = RuleRouting.availableProfile(for: rule, profiles: profiles) else {
             return (nil, "Saved route unavailable for \(rule.host). Choose a browser or update Settings.")
         }

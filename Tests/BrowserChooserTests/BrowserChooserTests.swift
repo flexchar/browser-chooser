@@ -2,6 +2,80 @@ import XCTest
 @testable import BrowserChooser
 
 final class BrowserChooserTests: XCTestCase {
+    private func safeLink(_ target: String, host: String = "safelinks.protection.outlook.com") -> URL {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = host
+        components.path = "/"
+        components.queryItems = [URLQueryItem(name: "url", value: target), URLQueryItem(name: "data", value: "fictional")]
+        return components.url!
+    }
+
+    func testSafeLinkExtractsOneDestinationAndPreservesItsQuery() {
+        let target = "https://work.example.com/path?part=one&next=two#section"
+        for host in ["safelinks.protection.outlook.com", "eur03.safelinks.protection.outlook.com"] {
+            let outer = safeLink(target, host: host)
+            let destination = SafeLinkRouting.destination(for: outer)
+            XCTAssertEqual(destination?.url.absoluteString, target)
+            XCTAssertEqual(destination?.isSafeLink, true)
+            let request = BrowserLaunchRequest(url: outer, profile: BrowserProfile(browser: .chrome, directory: "Default", name: "Work"))
+            XCTAssertEqual(request.arguments.last, outer.absoluteString, "The browser must receive the original Microsoft wrapper")
+        }
+    }
+
+    func testSafeLinkRejectsSpoofsAndAmbiguousOrUnsupportedTargets() {
+        let target = "https://work.example.com/path"
+        for host in ["safelinks.protection.outlook.com.evil.test", "fake-safelinks.protection.outlook.com", "outlook.com", "-region.safelinks.protection.outlook.com", "region-.safelinks.protection.outlook.com", "region..safelinks.protection.outlook.com"] {
+            let outer = safeLink(target, host: host)
+            XCTAssertEqual(SafeLinkRouting.destination(for: outer)?.url, outer)
+            XCTAssertEqual(SafeLinkRouting.destination(for: outer)?.isSafeLink, false)
+        }
+        var empty = URLComponents(url: safeLink(target), resolvingAgainstBaseURL: false)!
+        empty.queryItems = [URLQueryItem(name: "url", value: "")]
+        XCTAssertNil(SafeLinkRouting.destination(for: empty.url!))
+        var duplicate = URLComponents(url: safeLink(target), resolvingAgainstBaseURL: false)!
+        duplicate.queryItems = [URLQueryItem(name: "url", value: target), URLQueryItem(name: "url", value: "https://other.example.com")]
+        XCTAssertNil(SafeLinkRouting.destination(for: duplicate.url!))
+        for invalid in ["file:///tmp/demo", "ftp://work.example.com", "https://user:pass@work.example.com", "https://work.example.com/%ZZ", "https://work.example.com/white space", safeLink(target).absoluteString] {
+            XCTAssertNil(SafeLinkRouting.destination(for: safeLink(invalid)))
+        }
+        var wrongPath = URLComponents(url: safeLink(target), resolvingAgainstBaseURL: false)!
+        wrongPath.path = "/elsewhere"
+        XCTAssertNil(SafeLinkRouting.destination(for: wrongPath.url!))
+        var wrongPort = URLComponents(url: safeLink(target), resolvingAgainstBaseURL: false)!
+        wrongPort.port = 8443
+        XCTAssertNil(SafeLinkRouting.destination(for: wrongPort.url!))
+        var insecure = URLComponents(url: safeLink(target), resolvingAgainstBaseURL: false)!
+        insecure.scheme = "http"
+        XCTAssertNil(SafeLinkRouting.destination(for: insecure.url!))
+    }
+
+    @MainActor func testSafeLinksRouteExistingRulesButLaunchOriginalURL() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        try store.save([
+            RoutingRule(host: "work.example.com", profileID: "safari:safari"),
+            RoutingRule(host: "github.com", profileID: "safari:safari", pathPrefix: "/acme")
+        ])
+        let profile = BrowserProfile(browser: .safari, directory: nil, name: "Safari")
+        var opened: [URL] = []
+        var completions: [@MainActor (Result<Void, Error>) -> Void] = []
+        var fallback: [URL] = []
+        let app = AppDelegate(ruleStore: store, profileProvider: { ([profile], []) }, browserOpener: { url, _, completion in
+            opened.append(url); completions.append(completion)
+        }, fallbackObserver: { url, _ in fallback.append(url) })
+        let work = safeLink("https://work.example.com/ticket?id=fictional")
+        let github = safeLink("https://github.com/acme/tool/pull/7")
+        let other = safeLink("https://github.com/other/repo")
+        app.application(NSApplication.shared, open: [work, github, other])
+        XCTAssertEqual(opened, [work])
+        completions[0](.success(()))
+        XCTAssertEqual(opened, [work, github])
+        completions[1](.success(()))
+        XCTAssertEqual(fallback, [other])
+    }
     func testDefaultRuleStoreCanLoadWithoutCustomSuite() {
         _ = RoutingRuleStore().load()
     }

@@ -79,6 +79,53 @@ enum RuleRouting {
     }
 }
 
+struct RoutingDestination {
+    let url: URL
+    let isSafeLink: Bool
+}
+
+enum SafeLinkRouting {
+    private static let host = "safelinks.protection.outlook.com"
+
+    static func destination(for original: URL) -> RoutingDestination? {
+        guard let originalHost = original.host?.lowercased(), isSafeLinkHost(originalHost) else {
+            return RoutingDestination(url: original, isSafeLink: false)
+        }
+        guard original.scheme?.lowercased() == "https",
+              original.user == nil, original.password == nil,
+              original.port == nil || original.port == 443,
+              original.path.isEmpty || original.path == "/",
+              let components = URLComponents(url: original, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else { return nil }
+        let destinations = queryItems.filter { $0.name.lowercased() == "url" }
+        guard destinations.count == 1, destinations[0].name == "url",
+              let value = destinations[0].value, !value.isEmpty, validTargetText(value),
+              let target = URL(string: value),
+              let scheme = target.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              target.user == nil, target.password == nil,
+              let targetHost = target.host, RuleRouting.normalizedHost(targetHost) != nil,
+              !isSafeLinkHost(targetHost.lowercased()) else { return nil }
+        return RoutingDestination(url: target, isSafeLink: true)
+    }
+
+    private static func validTargetText(_ value: String) -> Bool {
+        guard value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
+        let bytes = Array(value.utf8)
+        for index in bytes.indices where bytes[index] == 37 {
+            guard index + 2 < bytes.count,
+                  bytes[(index + 1)...(index + 2)].allSatisfy({
+                      ($0 >= 48 && $0 <= 57) || ($0 >= 65 && $0 <= 70) || ($0 >= 97 && $0 <= 102)
+                  }) else { return false }
+        }
+        return true
+    }
+
+    private static func isSafeLinkHost(_ candidate: String) -> Bool {
+        guard let normalized = RuleRouting.normalizedHost(candidate), normalized == candidate else { return false }
+        return normalized == host || normalized.hasSuffix("." + host)
+    }
+}
+
 struct AddRuleArguments: Equatable {
     let host: String
     let pathPrefix: String?

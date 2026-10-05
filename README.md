@@ -25,6 +25,8 @@ Open Settings from the chooser gear, the manual URL window, or `⌘,`. Paste a w
 
 For `github.com`, `/acme` matches `/acme` and `/acme/repo`, but not `/acme-other`. A more specific path rule wins over a host-only rule; existing host-only rules keep working. You can save multiple prefixes for the same host.
 
+[Microsoft Safe Links](https://learn.microsoft.com/en-us/defender-office-365/safe-links-about) may wrap a web link for checking when you click it. For a recognized HTTPS Safe Link, Browser Chooser checks its embedded HTTP/HTTPS destination against these same host and path rules. A wrapped link to `work.example.com` can follow that rule, but the original Safe Link opens in the selected browser, keeping Microsoft's check in the path. Other Outlook links get no special route. Unrecognized wrappers are treated like ordinary links; malformed recognized Safe Links and links without a matching rule open the chooser. There's no catch-all Outlook rule, and the wrapper, email data, and tracking parameters aren't saved or logged.
+
 Once you've built the app, there's a command line path too:
 
 ```sh
