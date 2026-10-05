@@ -27,21 +27,21 @@ final class BrowserChooserTests: XCTestCase {
 
     func testPersonalShortcutOrderAndRoutingStayBoundToProfileDirectories() {
         let profiles = [
-            BrowserProfile(browser: .chrome, directory: "Profile 2", name: "DS-TTA"),
-            BrowserProfile(browser: .chrome, directory: "Profile 3", name: "Heat Harmony"),
-            BrowserProfile(browser: .chrome, directory: "Default", name: "JOE & THE JUICE"),
-            BrowserProfile(browser: .chrome, directory: "Profile 4", name: "lvc.dk"),
-            BrowserProfile(browser: .chrome, directory: "Profile 6", name: "PadelYard"),
+            BrowserProfile(browser: .chrome, directory: "Profile 2", name: "ClientA"),
+            BrowserProfile(browser: .chrome, directory: "Profile 3", name: "Consulting"),
+            BrowserProfile(browser: .chrome, directory: "Default", name: "Work"),
+            BrowserProfile(browser: .chrome, directory: "Profile 4", name: "Studio"),
+            BrowserProfile(browser: .chrome, directory: "Profile 6", name: "ClientB"),
             BrowserProfile(browser: .edge, directory: "Default", name: "Profile 1"),
             BrowserProfile(browser: .safari, directory: nil, name: "Safari")
         ]
         let ordered = ProfilePresentation.ordered(profiles)
         XCTAssertEqual(ordered.map(\.displayName), [
-            "Edge - Personal", "Chrome - JOE & THE JUICE", "Chrome - DS-TTA",
-            "Chrome - Heat Harmony", "Chrome - lvc.dk", "Chrome - PadelYard", "Safari"
+            "Edge - Personal", "Chrome - Work", "Chrome - ClientA",
+            "Chrome - Consulting", "Chrome - Studio", "Chrome - ClientB", "Safari"
         ])
         XCTAssertEqual(ordered.map(\.menuName), [
-            "Personal", "JOE & THE JUICE", "DS-TTA", "Heat Harmony", "lvc.dk", "PadelYard", "Safari"
+            "Personal", "Work", "ClientA", "Consulting", "Studio", "ClientB", "Safari"
         ])
         XCTAssertEqual(ordered.map(\.id), [
             "edge:Default", "chrome:Default", "chrome:Profile 2", "chrome:Profile 3",
@@ -118,7 +118,7 @@ final class BrowserChooserTests: XCTestCase {
     @MainActor func testChooserRowsUseAlignedBrowserAndProfileColumns() throws {
         let profiles = [
             BrowserProfile(browser: .edge, directory: "Default", name: "Profile 1"),
-            BrowserProfile(browser: .chrome, directory: "Default", name: "JOE & THE JUICE"),
+            BrowserProfile(browser: .chrome, directory: "Default", name: "CONSULTING WORK"),
             BrowserProfile(browser: .safari, directory: nil, name: "Safari")
         ]
         let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: profiles, issues: [], choose: { _, _ in }, closed: { _ in })
@@ -137,7 +137,7 @@ final class BrowserChooserTests: XCTestCase {
         let names = try rows.map { try column("profile", in: $0) }
         XCTAssertEqual(numbers.map(\.stringValue), ["1.", "2.", "3."])
         XCTAssertEqual(browsers.map(\.stringValue), ["Edge", "Chrome", "Safari"])
-        XCTAssertEqual(names.map(\.stringValue), ["Personal", "JOE & THE JUICE", ""])
+        XCTAssertEqual(names.map(\.stringValue), ["Personal", "CONSULTING WORK", ""])
         XCTAssertEqual(Set(numbers.map { $0.frame.minX }).count, 1)
         XCTAssertEqual(Set(browsers.map { $0.frame.minX }).count, 1)
         XCTAssertEqual(Set(names.map { $0.frame.minX }).count, 1)

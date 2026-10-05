@@ -1,44 +1,56 @@
 # Browser Chooser
 
-Browser Chooser is a personal macOS successor inspired by [Browserosaurus](https://github.com/will-stone/browserosaurus). It is an independent Swift/AppKit implementation, not a fork of or affiliated with Browserosaurus.
+A small macOS menu for opening a web link in the browser profile you meant to use. It offers local Chrome and Microsoft Edge profiles plus Safari, with number keys or a click to choose. Built with AI using Codex, with human feedback and local testing.
 
-It chooses a browser for `http` and `https` links. It reads local Chrome and Microsoft Edge profile metadata when the chooser opens, then offers those profiles and Safari. Custom app schemes such as `zoommtg:` are outside its scope.
+Inspired by [Browserosaurus](https://github.com/will-stone/browserosaurus). This is an independent Swift/AppKit implementation, not a fork or affiliate.
 
-## Build and test
+![Browser Chooser menu with demo profiles](docs/screenshots/chooser.png)
 
-```sh
-timeout 300 swift test
-timeout 300 ./scripts/build-app.sh
-```
+*The screenshots use demo profile names and `example.com`, not personal browser data.*
 
-The app bundle is `build/Browser Chooser.app`. Build output is ignored by Git. The build script signs with the single valid Apple Development or Developer ID Application identity on the Mac. If several are installed, set `BROWSER_CHOOSER_SIGN_IDENTITY` to the intended identity's fingerprint. It fails when no suitable identity is available.
+## What it does
 
-## Local URL trial
+- Handles `http` and `https` links. Custom app schemes stay with their own handlers.
+- Reads Chrome and Edge profile names from local browser metadata when the chooser opens. It does not read cookies or account credentials.
+- Opens the link in the chosen profile. Safari opens without a profile choice.
+- Shows the destination host below the list. Choose with a click or keys `1` to `9`; press Escape or click away to cancel.
+- Opens a manual URL entry window when launched without a link:
 
-```sh
-timeout 300 ./scripts/trial-url.sh
-```
+![Manual web link entry with a demo URL](docs/screenshots/url-entry.png)
 
-This runs the app bundle directly with `https://example.com`. No URL handler is registered and the macOS default browser is not changed. Pass another `http` or `https` URL as the first argument to try it. You can also open the app bundle directly, enter a web URL, and click **Open chooser**. Other schemes are rejected. The compact floating chooser opens beside the mouse pointer, flipping sides and staying within the usable screen area near display edges. Each row starts with its number, then aligned browser and profile columns, with the browser icon at the far right. Safari has no profile name. The destination host appears in the footer. The list scrolls if more than seven profiles are available. Click a row, press `1` through `9`, or press Escape to cancel. Clicking outside the chooser also cancels it. Selecting an option opens the URL in that browser.
+## Build and try it
 
-The app queues incoming links, so each link gets its own chooser. A failed browser launch leaves the chooser open for another selection. Chromium launches use the exact profile directory with `/usr/bin/open`; Safari is targeted by its bundle identifier.
-
-Chrome and Edge profile data lives in folders protected by macOS. If the chooser says it cannot read profiles, open **System Settings > Privacy & Security > Files & Folders** and allow **Browser Chooser** access to both browser folders. If the switches do not stick, remove only the Browser Chooser entry there, open a link with the app to trigger a fresh access request, then allow both folders. Fully quit Browser Chooser and launch it again after changing access; an already running process can keep the earlier denial. Earlier ad-hoc builds used a changing code hash, so a grant made to one of those builds may need renewal for the signed app. The build script now uses a stable certificate identity so subsequent builds retain the same designated requirement.
-
-The local trial verified that the chooser lists Chrome and Edge profiles plus Safari, opens the exact requested URL in the selected Chrome work and consulting profiles and Edge profile, rejects custom schemes, and cancels with Escape. These checks used the signed bundle without registering it as the default browser.
-
-## Install and choose as default
-
-After building, quit Browser Chooser and install the signed bundle:
+Requires macOS 13 or later, Swift 6, and a valid Apple Development or Developer ID Application signing identity on your Mac. There is no prebuilt or notarized download.
 
 ```sh
-timeout 300 ./scripts/install-app.sh
+swift test
+./scripts/build-app.sh
+./scripts/trial-url.sh
 ```
 
-The script installs `/Applications/Browser Chooser.app` and registers its `http` and `https` claims with Launch Services. The bundle also declares an alternate HTML viewer role, but this Mac still did not list it in the System Settings default browser menu. The app accepts web links only. The script does not change defaults. Confirm link delivery before making it the default:
+The build script creates `build/Browser Chooser.app` and signs it with the only valid matching identity it finds. If you have more than one, set `BROWSER_CHOOSER_SIGN_IDENTITY` to the identity fingerprint before building. The trial script opens `https://example.com` by default, or accepts another web URL as its first argument. It does not register the app as a URL handler or change your default browser.
+
+To install the signed build in `/Applications` and register its web link claims:
 
 ```sh
-timeout 300 /usr/bin/open -a '/Applications/Browser Chooser.app' 'https://example.com/?browser-chooser=handoff-test'
+./scripts/install-app.sh
+open -a '/Applications/Browser Chooser.app' 'https://example.com'
 ```
 
-The chooser should display `example.com`, with Edge `Personal` first and the Chrome `Default` profile (JOE & THE JUICE) second when those profiles exist. Test a selection and confirm the link opens in the chosen profile. On this Mac, the default was set for `http` and `https` through `NSWorkspace.setDefaultApplication(at:toOpenURLsWithScheme:completion:)`; the Settings menu did not offer Browser Chooser. macOS also changed the HTML file association, which was restored to Browserosaurus through Finder's **Get Info > Open with > Change All**. Final readback confirmed both web schemes route to Browser Chooser, HTML files still open with Browserosaurus, and custom schemes were untouched.
+The install script does **not** change your default browser. On the Mac used for development, Browser Chooser did not appear in the System Settings default browser menu. After verifying the installed app, opt in to the supported macOS API for `http` and `https`:
+
+```sh
+swift scripts/set-default-browser.swift --apply
+```
+
+The helper reads back both web handlers and warns if macOS also changes your HTML file opener. If it does, restore your previous HTML app through Finder's **Get Info > Open with > Change All**. The helper does not change file or custom-scheme handlers itself.
+
+macOS may ask for **Files & Folders** access to read Chrome and Edge profile names. If the chooser reports that it cannot read profiles, allow Browser Chooser access in **System Settings > Privacy & Security > Files & Folders**, then fully quit and reopen the app.
+
+## Status
+
+This is a source-built personal project shared for others to inspect and try. Local testing covered profile discovery, web URL validation, keyboard and pointer selection, launch into specific installed profiles, and default web link routing. No prebuilt signed release is included.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
