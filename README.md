@@ -12,7 +12,7 @@ I've been enjoying prompting my AI agent, Codex, on the side to build small, pra
 
 - Offers local Chrome and Microsoft Edge profiles plus Safari for `http` and `https` links. Custom app schemes stay with their own handlers.
 - Shows the destination host below the list. Click a row, press `1` to `9`, or press Escape to cancel.
-- Can send an exact host straight to a chosen profile with an optional routing rule. If that profile is unavailable, the chooser opens with a warning.
+- Can send an exact host or a path within it straight to a chosen profile with an optional routing rule. If that profile is unavailable, the chooser opens with a warning.
 - Opens this manual URL window when launched without a link:
 
 ![Manual web link entry with a demo URL](docs/screenshots/url-entry.png)
@@ -21,23 +21,26 @@ Chrome and Edge profile names come from local browser metadata when the chooser 
 
 ## Routing rules
 
-Open Settings from the chooser gear, the manual URL window, or `⌘,`. Paste a web URL or enter a host such as `work.example.com`, choose a discovered profile, and save. Rules match that exact host only, so `sub.work.example.com` needs its own rule. You can edit, disable, or delete rules in Settings.
+Open Settings from the chooser gear, the manual URL window, or `⌘,`. Paste a web URL or enter a host such as `work.example.com`, choose a discovered profile, and save. Leave **Path prefix** empty for every path on that host, or enter one such as `/acme` for a narrower rule. The host must match exactly, so a subdomain needs its own rule. You can edit, disable, or delete rules in Settings.
+
+For `github.com`, `/acme` matches `/acme` and `/acme/repo`, but not `/acme-other`. A more specific path rule wins over a host-only rule; existing host-only rules keep working. You can save multiple prefixes for the same host.
 
 Once you've built the app, there's a command line path too:
 
 ```sh
 APP='build/Browser Chooser.app/Contents/MacOS/BrowserChooser'
 "$APP" --add-rule work.example.com --profile chrome:Default
-"$APP" --explain-route https://work.example.com/path
+"$APP" --add-rule github.com --path-prefix /acme --profile chrome:Default
+"$APP" --explain-route https://github.com/acme/repo
 ```
 
 `--explain-route` is a dry run and doesn't open a browser. `"$APP" --settings` opens Settings.
 
 ## Where settings live
 
-The installed app uses `UserDefaults.standard` for the `dk.lvc.browserchooser` application domain, normally stored at `~/Library/Preferences/dk.lvc.browserchooser.plist`. The `routingRules.v1` key holds JSON-encoded data: each rule saves a normalized `host`, a browser/profile directory `profileID`, and an `enabled` flag. For example, `work.example.com` can point to `chrome:Default`. Rules don't save email addresses, full URLs, paths, queries, cookies, or credentials. They stay local and aren't uploaded to GitHub.
+The installed app uses `UserDefaults.standard` for the `dk.lvc.browserchooser` application domain, normally stored at `~/Library/Preferences/dk.lvc.browserchooser.plist`. The `routingRules.v1` key holds JSON-encoded data: each rule saves a normalized `host`, an optional `pathPrefix`, a browser/profile directory `profileID`, and an `enabled` flag. For example, `github.com` and `/acme` can point to `chrome:Default`. Rules don't save email addresses, full URLs, query strings, fragments, cookies, or credentials. They stay local and aren't uploaded to GitHub.
 
-An enabled rule matches that exact host for both HTTP and HTTPS links, regardless of path. Disabled rules and unmatched hosts open the chooser. If the browser or saved profile directory isn't available, the chooser opens with a warning. App updates keep the same preferences; when moving to another Mac, check the profile IDs because its browser directories may differ.
+An enabled rule matches that exact host for both HTTP and HTTPS links, and its path prefix if set. Links without a matching enabled rule open the chooser. If the browser or saved profile directory isn't available, the chooser opens with a warning. App updates keep the same preferences; when moving to another Mac, check the profile IDs because its browser directories may differ.
 
 Settings is the safest place to edit rules. macOS caches preferences, so don't hand-edit the plist. Once you've saved a rule, quit Browser Chooser and back up the whole app preferences domain to a private file outside this repo:
 

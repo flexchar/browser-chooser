@@ -46,15 +46,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let args = CommandLine.arguments
         if args.contains("--settings") { showSettings(); return }
         if let index = args.firstIndex(of: "--add-rule") {
-            guard args.count > index + 3, args[index + 2] == "--profile" else { fputs("Usage: --add-rule HOST --profile browser:directory\n", stderr); exit(2) }
-            let host = RuleRouting.normalizedHost(args[index + 1])
-            let profiles = availableProfiles().profiles
-            guard let host, let profile = RuleRouting.availableProfile(for: RoutingRule(host: host, profileID: args[index + 3]), profiles: profiles) else {
-                fputs("Invalid host or unavailable profile\n", stderr); exit(2)
+            guard let request = AddRuleArguments.parse(Array(args.dropFirst(index + 1))) else {
+                fputs("Usage: --add-rule HOST [--path-prefix /path] --profile browser:directory\n", stderr)
+                exit(2)
             }
-            var rules = ruleStore.load().filter { $0.host != host }
-            rules.append(RoutingRule(host: host, profileID: profile.id))
-            do { try ruleStore.save(rules); print("Saved \(host) → \(profile.id)") }
+            let profiles = availableProfiles().profiles
+            let requestedRule = RoutingRule(host: request.host, profileID: request.profileID, pathPrefix: request.pathPrefix)
+            guard let profile = RuleRouting.availableProfile(for: requestedRule, profiles: profiles) else {
+                fputs("Unavailable profile\n", stderr); exit(2)
+            }
+            var rules = ruleStore.load().filter { $0.id != requestedRule.id }
+            rules.append(RoutingRule(host: request.host, profileID: profile.id, pathPrefix: request.pathPrefix))
+            do { try ruleStore.save(rules); print("Saved \(request.host)\(request.pathPrefix ?? "") → \(profile.id)") }
             catch { fputs("Cannot save rule: \(error.localizedDescription)\n", stderr); exit(2) }
             NSApp.terminate(nil); return
         }

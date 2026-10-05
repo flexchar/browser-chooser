@@ -6,17 +6,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let profiles: [BrowserProfile]
     private let closed: @MainActor () -> Void
     private let hostField = NSTextField()
+    private let pathField = NSTextField()
     private let profilePicker = NSPopUpButton()
     private let enabledButton = NSButton(checkboxWithTitle: "Enabled", target: nil, action: nil)
     private let errorLabel = NSTextField(labelWithString: "")
     private let rulesStack = NSStackView()
-    private var editingHost: String?
+    private var editingID: String?
 
     init(store: RoutingRuleStore, profiles: [BrowserProfile], closed: @escaping @MainActor () -> Void) {
         self.store = store
         self.profiles = profiles
         self.closed = closed
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 430), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 490), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "Routing settings"
         window.center()
         super.init(window: window)
@@ -24,11 +25,14 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         let content = NSView()
         window.contentView = content
-        let heading = NSTextField(labelWithString: "Always open this host in a profile")
+        let heading = NSTextField(labelWithString: "Always open matching links in a profile")
         heading.font = .systemFont(ofSize: 16, weight: .semibold)
-        let hint = NSTextField(labelWithString: "Paste a link or enter a host. Only the host is saved. Exact matches only.")
+        let hint = NSTextField(labelWithString: "Paste a link or enter a host. Exact host match.")
         hint.textColor = .secondaryLabelColor
         hostField.placeholderString = "work.example.com"
+        let pathHint = NSTextField(labelWithString: "Optional path prefix (whole segments only)")
+        pathHint.textColor = .secondaryLabelColor
+        pathField.placeholderString = "/acme"
         profilePicker.addItems(withTitles: profiles.map(\.displayName))
         let saveButton = NSButton(title: "Save rule", target: self, action: #selector(saveRule))
         let cancelButton = NSButton(title: "Cancel edit", target: self, action: #selector(cancelEdit))
@@ -41,7 +45,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         scroll.hasVerticalScroller = true
         scroll.drawsBackground = false
         scroll.documentView = rulesStack
-        for view in [heading, hint, hostField, profilePicker, enabledButton, saveButton, cancelButton, errorLabel, scroll] {
+        for view in [heading, hint, hostField, pathHint, pathField, profilePicker, enabledButton, saveButton, cancelButton, errorLabel, scroll] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
@@ -49,7 +53,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             heading.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 22), heading.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
             hint.leadingAnchor.constraint(equalTo: heading.leadingAnchor), hint.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 8),
             hostField.leadingAnchor.constraint(equalTo: heading.leadingAnchor), hostField.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -22), hostField.topAnchor.constraint(equalTo: hint.bottomAnchor, constant: 18),
-            profilePicker.leadingAnchor.constraint(equalTo: heading.leadingAnchor), profilePicker.topAnchor.constraint(equalTo: hostField.bottomAnchor, constant: 12), profilePicker.widthAnchor.constraint(equalToConstant: 250),
+            pathHint.leadingAnchor.constraint(equalTo: heading.leadingAnchor), pathHint.topAnchor.constraint(equalTo: hostField.bottomAnchor, constant: 12),
+            pathField.leadingAnchor.constraint(equalTo: heading.leadingAnchor), pathField.trailingAnchor.constraint(equalTo: hostField.trailingAnchor), pathField.topAnchor.constraint(equalTo: pathHint.bottomAnchor, constant: 6),
+            profilePicker.leadingAnchor.constraint(equalTo: heading.leadingAnchor), profilePicker.topAnchor.constraint(equalTo: pathField.bottomAnchor, constant: 12), profilePicker.widthAnchor.constraint(equalToConstant: 250),
             enabledButton.leadingAnchor.constraint(equalTo: profilePicker.trailingAnchor, constant: 12), enabledButton.centerYAnchor.constraint(equalTo: profilePicker.centerYAnchor),
             saveButton.leadingAnchor.constraint(equalTo: heading.leadingAnchor), saveButton.topAnchor.constraint(equalTo: profilePicker.bottomAnchor, constant: 14),
             cancelButton.leadingAnchor.constraint(equalTo: saveButton.trailingAnchor, constant: 10), cancelButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
@@ -73,12 +79,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func saveRule() {
         do {
             guard let host = RuleRouting.normalizedHost(hostField.stringValue) else { throw RuleError.invalidHost }
+            let rawPath = pathField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let pathPrefix: String?
+            if rawPath.isEmpty { pathPrefix = nil }
+            else { guard let path = RuleRouting.normalizedPathPrefix(rawPath) else { throw RuleError.invalidPathPrefix }; pathPrefix = path }
             guard profilePicker.indexOfSelectedItem >= 0, profilePicker.indexOfSelectedItem < profiles.count else { throw RuleError.invalidProfile }
             var rules = store.load()
-            if let editingHost { rules.removeAll { $0.host == editingHost } }
-            if rules.contains(where: { $0.host == host }) { throw RuleError.duplicateHost }
-            rules.append(RoutingRule(host: host, profileID: profiles[profilePicker.indexOfSelectedItem].id, enabled: enabledButton.state == .on))
-            try store.save(rules.sorted { $0.host < $1.host })
+            if let editingID { rules.removeAll { $0.id == editingID } }
+            let rule = RoutingRule(host: host, profileID: profiles[profilePicker.indexOfSelectedItem].id, enabled: enabledButton.state == .on, pathPrefix: pathPrefix)
+            if rules.contains(where: { $0.id == rule.id }) { throw RuleError.duplicateHost }
+            rules.append(rule)
+            try store.save(rules.sorted { $0.id < $1.id })
             cancelEdit()
             reloadList()
         } catch {
@@ -88,8 +99,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func cancelEdit() {
-        editingHost = nil
+        editingID = nil
         hostField.stringValue = ""
+        pathField.stringValue = ""
         enabledButton.state = .on
         errorLabel.isHidden = true
     }
@@ -102,8 +114,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let rules = store.load()
         guard rules.indices.contains(index) else { return }
         let rule = rules[index]
-        editingHost = rule.host
+        editingID = rule.id
         hostField.stringValue = rule.host
+        pathField.stringValue = rule.pathPrefix ?? ""
         if let index = profiles.firstIndex(where: { $0.id == rule.profileID }) { profilePicker.selectItem(at: index) }
         else { profilePicker.select(nil); errorLabel.stringValue = "Saved profile is unavailable. Choose another profile before saving."; errorLabel.isHidden = false }
         enabledButton.state = rule.enabled ? .on : .off
@@ -127,7 +140,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             row.orientation = .horizontal
             row.spacing = 10
             let name = profiles.first(where: { $0.id == rule.profileID })?.displayName ?? "Unavailable: \(rule.profileID)"
-            let label = NSTextField(labelWithString: "\(rule.enabled ? "" : "Off · ")\(rule.host)  →  \(name)")
+            let label = NSTextField(labelWithString: "\(rule.enabled ? "" : "Off · ")\(rule.host)\(rule.pathPrefix ?? "")  →  \(name)")
             label.lineBreakMode = .byTruncatingMiddle
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             let edit = NSButton(title: "Edit", target: self, action: #selector(editRule(_:)))

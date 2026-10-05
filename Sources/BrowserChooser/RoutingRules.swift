@@ -4,22 +4,38 @@ struct RoutingRule: Codable, Equatable, Identifiable {
     var host: String
     var profileID: String
     var enabled: Bool = true
-    var id: String { host }
+    var pathPrefix: String? = nil
+    var id: String { "\(host)|\(pathPrefix ?? "")" }
 }
 
 enum RuleError: LocalizedError {
-    case invalidHost, duplicateHost, invalidProfile
+    case invalidHost, invalidPathPrefix, duplicateHost, invalidProfile
 
     var errorDescription: String? {
         switch self {
         case .invalidHost: "Enter a valid web host or paste an http or https URL."
-        case .duplicateHost: "A rule for this host already exists."
+        case .invalidPathPrefix: "Enter a path beginning with /, such as /acme. Leave it empty for the whole host."
+        case .duplicateHost: "A rule for this host and path prefix already exists."
         case .invalidProfile: "Choose an available browser profile."
         }
     }
 }
 
 enum RuleRouting {
+    static func normalizedPathPrefix(_ input: String) -> String? {
+        let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.hasPrefix("/"), value != "/", !value.contains("//"),
+              !value.contains("?"), !value.contains("#"), !value.contains("%") else { return nil }
+        let path = value.hasSuffix("/") ? String(value.dropLast()) : value
+        guard path.split(separator: "/").allSatisfy({ segment in
+            segment != "." && segment != ".." && !segment.isEmpty && segment.utf8.allSatisfy {
+                ($0 >= 65 && $0 <= 90) || ($0 >= 97 && $0 <= 122) ||
+                ($0 >= 48 && $0 <= 57) || [45, 46, 95, 126].contains($0)
+            }
+        }) else { return nil }
+        return path
+    }
+
     static func normalizedHost(_ input: String) -> String? {
         let value = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
@@ -42,7 +58,16 @@ enum RuleRouting {
     static func matchingRule(for url: URL, in rules: [RoutingRule]) -> RoutingRule? {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
               let host = url.host, let normalized = normalizedHost(host) else { return nil }
-        return rules.first { $0.enabled && $0.host == normalized }
+        let path = url.path(percentEncoded: true)
+        let safePrefixPath = path.split(separator: "/").allSatisfy { segment in
+            guard let decoded = String(segment).removingPercentEncoding else { return false }
+            return decoded != "." && decoded != ".." && !decoded.contains("/") && !decoded.contains("\\")
+        }
+        return rules.filter { rule in
+            guard rule.enabled, rule.host == normalized else { return false }
+            guard let prefix = rule.pathPrefix else { return true }
+            return safePrefixPath && (path == prefix || path.hasPrefix(prefix + "/"))
+        }.max { ($0.pathPrefix?.count ?? 0) < ($1.pathPrefix?.count ?? 0) }
     }
 
     static func availableProfile(for rule: RoutingRule, profiles: [BrowserProfile], directoryExists: (BrowserProfile) -> Bool = { profile in
@@ -51,6 +76,34 @@ enum RuleRouting {
         return FileManager.default.fileExists(atPath: state.deletingLastPathComponent().appendingPathComponent(directory).path, isDirectory: &isDirectory) && isDirectory.boolValue
     }) -> BrowserProfile? {
         profiles.first { $0.id == rule.profileID && directoryExists($0) }
+    }
+}
+
+struct AddRuleArguments: Equatable {
+    let host: String
+    let pathPrefix: String?
+    let profileID: String
+
+    static func parse(_ arguments: [String]) -> AddRuleArguments? {
+        guard let first = arguments.first, let host = RuleRouting.normalizedHost(first) else { return nil }
+        var profileID: String?
+        var pathPrefix: String?
+        var index = 1
+        while index < arguments.count {
+            guard index + 1 < arguments.count else { return nil }
+            switch arguments[index] {
+            case "--profile":
+                guard profileID == nil, BrowserProfile.validID(arguments[index + 1]) else { return nil }
+                profileID = arguments[index + 1]
+            case "--path-prefix":
+                guard pathPrefix == nil, let normalized = RuleRouting.normalizedPathPrefix(arguments[index + 1]) else { return nil }
+                pathPrefix = normalized
+            default: return nil
+            }
+            index += 2
+        }
+        guard let profileID else { return nil }
+        return AddRuleArguments(host: host, pathPrefix: pathPrefix, profileID: profileID)
     }
 }
 
@@ -65,8 +118,9 @@ final class RoutingRuleStore {
         var seen = Set<String>()
         return decoded.filter { rule in
             guard RuleRouting.normalizedHost(rule.host) == rule.host,
-                  BrowserProfile.validID(rule.profileID), !seen.contains(rule.host) else { return false }
-            seen.insert(rule.host)
+                  rule.pathPrefix.map({ RuleRouting.normalizedPathPrefix($0) == $0 }) ?? true,
+                  BrowserProfile.validID(rule.profileID), !seen.contains(rule.id) else { return false }
+            seen.insert(rule.id)
             return true
         }
     }
@@ -75,8 +129,9 @@ final class RoutingRuleStore {
         var seen = Set<String>()
         for rule in rules {
             guard RuleRouting.normalizedHost(rule.host) == rule.host else { throw RuleError.invalidHost }
+            guard rule.pathPrefix.map({ RuleRouting.normalizedPathPrefix($0) == $0 }) ?? true else { throw RuleError.invalidPathPrefix }
             guard BrowserProfile.validID(rule.profileID) else { throw RuleError.invalidProfile }
-            guard seen.insert(rule.host).inserted else { throw RuleError.duplicateHost }
+            guard seen.insert(rule.id).inserted else { throw RuleError.duplicateHost }
         }
         defaults.set(try JSONEncoder().encode(rules), forKey: key)
     }

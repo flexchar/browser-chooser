@@ -52,10 +52,72 @@ final class BrowserChooserTests: XCTestCase {
         let settings = SettingsWindowController(store: store, profiles: [BrowserProfile(browser: .safari, directory: nil, name: "Safari")], closed: {})
         XCTAssertEqual(settings.window?.title, "Routing settings")
         XCTAssertEqual(store.load().count, 1)
-        XCTAssertEqual(settings.window?.contentLayoutRect.size, NSSize(width: 560, height: 430))
+        XCTAssertEqual(settings.window?.contentLayoutRect.size, NSSize(width: 560, height: 490))
         settings.beginEditingRule(at: 0)
         XCTAssertNil(settings.selectedProfileID)
         XCTAssertNotNil(settings.validationMessage)
+    }
+    func testPathPrefixMatchingUsesWholeSegmentsAndSpecificRuleWins() {
+        let hostRule = RoutingRule(host: "github.com", profileID: "safari:safari")
+        let orgRule = RoutingRule(host: "github.com", profileID: "chrome:Default", pathPrefix: "/acme")
+        let repoRule = RoutingRule(host: "github.com", profileID: "edge:Default", pathPrefix: "/acme/tool")
+        let rules = [hostRule, orgRule, repoRule]
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme")!, in: rules), orgRule)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/tool/pull/7?tab=files#diff")!, in: rules), repoRule)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/tooling")!, in: rules), orgRule)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/blob/main/file%20name")!, in: rules), orgRule)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme-other")!, in: rules), hostRule)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com.evil.test/acme")!, in: rules), nil)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/../personal")!, in: [orgRule]), nil)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/%2e%2e/personal")!, in: [orgRule]), nil)
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://github.com/acme/tool")!, in: [hostRule, RoutingRule(host: orgRule.host, profileID: orgRule.profileID, enabled: false, pathPrefix: orgRule.pathPrefix)]), hostRule)
+    }
+
+    func testPathRuleStoreKeepsHostAndMultiplePrefixesAndLoadsLegacyJSON() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        let hostRule = RoutingRule(host: "github.com", profileID: "safari:safari")
+        let pathRule = RoutingRule(host: "github.com", profileID: "chrome:Default", pathPrefix: "/acme")
+        let another = RoutingRule(host: "github.com", profileID: "edge:Default", pathPrefix: "/other")
+        try store.save([hostRule, pathRule, another])
+        XCTAssertEqual(store.load(), [hostRule, pathRule, another])
+        XCTAssertThrowsError(try store.save([pathRule, pathRule]))
+        defaults.set(#"[{"host":"work.example.com","profileID":"chrome:Default","enabled":true}]"#.data(using: .utf8)!, forKey: "routingRules.v1")
+        XCTAssertEqual(store.load(), [RoutingRule(host: "work.example.com", profileID: "chrome:Default")])
+    }
+
+    func testPathPrefixValidationAndCLIOptionOrder() {
+        XCTAssertEqual(RuleRouting.normalizedPathPrefix(" /acme/tools/ "), "/acme/tools")
+        for invalid in ["acme", "/", "//acme", "/acme//tools", "/acme?x=1", "/acme#x", "/acme/../other", "/acme/%2e%2e"] {
+            XCTAssertNil(RuleRouting.normalizedPathPrefix(invalid), invalid)
+        }
+        let first = AddRuleArguments.parse(["github.com", "--path-prefix", "/acme", "--profile", "chrome:Default"])
+        let second = AddRuleArguments.parse(["github.com", "--profile", "chrome:Default", "--path-prefix", "/acme"])
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(first?.pathPrefix, "/acme")
+        XCTAssertNil(AddRuleArguments.parse(["github.com", "--path-prefix", "/bad?query", "--profile", "chrome:Default"]))
+    }
+
+    @MainActor func testUnavailableSpecificRuleDoesNotFallThroughToHostRule() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        try store.save([
+            RoutingRule(host: "github.com", profileID: "safari:safari"),
+            RoutingRule(host: "github.com", profileID: "chrome:Profile 9", pathPrefix: "/acme")
+        ])
+        var launches = 0
+        var issues: [String] = []
+        let app = AppDelegate(ruleStore: store,
+                              profileProvider: { ([BrowserProfile(browser: .safari, directory: nil, name: "Safari")], []) },
+                              browserOpener: { _, _, _ in launches += 1 },
+                              fallbackObserver: { _, warnings in issues = warnings })
+        app.application(NSApplication.shared, open: [URL(string: "https://github.com/acme/repo")!])
+        XCTAssertEqual(launches, 0)
+        XCTAssertTrue(issues.contains { $0.contains("Saved route unavailable") })
     }
 
     @MainActor func testAutomaticRoutesSerializeAndFailureReturnsSameURLToChooser() throws {
