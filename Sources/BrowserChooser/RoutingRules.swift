@@ -58,7 +58,7 @@ final class RoutingRuleStore {
     private let defaults: UserDefaults
     private let key = "routingRules.v1"
 
-    init(defaults: UserDefaults = UserDefaults(suiteName: "dk.lvc.browserchooser")!) { self.defaults = defaults }
+    init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     func load() -> [RoutingRule] {
         guard let data = defaults.data(forKey: key), let decoded = try? JSONDecoder().decode([RoutingRule].self, from: data) else { return [] }

@@ -2,6 +2,9 @@ import XCTest
 @testable import BrowserChooser
 
 final class BrowserChooserTests: XCTestCase {
+    func testDefaultRuleStoreCanLoadWithoutCustomSuite() {
+        _ = RoutingRuleStore().load()
+    }
     func testRuleNormalizesHostOnlyAndRejectsInvalidHosts() {
         XCTAssertEqual(RuleRouting.normalizedHost(" HTTPS://Work.Example.com./tickets?id=secret "), "work.example.com")
         XCTAssertEqual(RuleRouting.normalizedHost("work.example.com"), "work.example.com")
