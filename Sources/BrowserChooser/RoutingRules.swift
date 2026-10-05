@@ -5,7 +5,13 @@ struct RoutingRule: Codable, Equatable, Identifiable {
     var profileID: String
     var enabled: Bool = true
     var pathPrefix: String? = nil
-    var id: String { "\(host)|\(pathPrefix ?? "")" }
+    var matchKind: RoutingMatchKind? = nil
+    var kind: RoutingMatchKind { matchKind ?? .host }
+    var id: String { "\(kind.rawValue)|\(host)|\(pathPrefix ?? "")" }
+}
+
+enum RoutingMatchKind: String, Codable {
+    case host, urlDomain
 }
 
 enum RuleError: LocalizedError {
@@ -63,11 +69,21 @@ enum RuleRouting {
             guard let decoded = String(segment).removingPercentEncoding else { return false }
             return decoded != "." && decoded != ".." && !decoded.contains("/") && !decoded.contains("\\")
         }
-        return rules.filter { rule in
-            guard rule.enabled, rule.host == normalized else { return false }
+        let hostMatch = rules.filter { rule in
+            guard rule.kind == .host, rule.enabled, rule.host == normalized else { return false }
             guard let prefix = rule.pathPrefix else { return true }
             return safePrefixPath && (path == prefix || path.hasPrefix(prefix + "/"))
         }.max { ($0.pathPrefix?.count ?? 0) < ($1.pathPrefix?.count ?? 0) }
+        if let hostMatch { return hostMatch }
+        return rules.first { $0.enabled && $0.kind == .urlDomain && containsDomain($0.host, in: url) }
+    }
+
+    // Decode once so query emails and escaped destinations use the same domain boundaries.
+    private static func containsDomain(_ domain: String, in url: URL) -> Bool {
+        guard let decoded = url.absoluteString.removingPercentEncoding else { return false }
+        let escaped = NSRegularExpression.escapedPattern(for: domain)
+        let pattern = "(?<![\\p{L}\\p{N}\\p{M}_-])" + escaped + "(?![\\p{L}\\p{N}\\p{M}_.。．｡-])"
+        return decoded.lowercased().range(of: pattern, options: .regularExpression) != nil
     }
 
     static func availableProfile(for rule: RoutingRule, profiles: [BrowserProfile], directoryExists: (BrowserProfile) -> Bool = { profile in
@@ -130,13 +146,19 @@ struct AddRuleArguments: Equatable {
     let host: String
     let pathPrefix: String?
     let profileID: String
+    let matchKind: RoutingMatchKind?
 
     static func parse(_ arguments: [String]) -> AddRuleArguments? {
         guard let first = arguments.first, let host = RuleRouting.normalizedHost(first) else { return nil }
         var profileID: String?
         var pathPrefix: String?
+        var matchKind: RoutingMatchKind?
         var index = 1
         while index < arguments.count {
+            if arguments[index] == "--url-domain" {
+                guard matchKind == nil else { return nil }
+                matchKind = .urlDomain; index += 1; continue
+            }
             guard index + 1 < arguments.count else { return nil }
             switch arguments[index] {
             case "--profile":
@@ -150,7 +172,8 @@ struct AddRuleArguments: Equatable {
             index += 2
         }
         guard let profileID else { return nil }
-        return AddRuleArguments(host: host, pathPrefix: pathPrefix, profileID: profileID)
+        guard matchKind != .urlDomain || pathPrefix == nil else { return nil }
+        return AddRuleArguments(host: host, pathPrefix: pathPrefix, profileID: profileID, matchKind: matchKind)
     }
 }
 
@@ -165,6 +188,7 @@ final class RoutingRuleStore {
         var seen = Set<String>()
         return decoded.filter { rule in
             guard RuleRouting.normalizedHost(rule.host) == rule.host,
+                  (rule.kind != .urlDomain || rule.pathPrefix == nil),
                   rule.pathPrefix.map({ RuleRouting.normalizedPathPrefix($0) == $0 }) ?? true,
                   BrowserProfile.validID(rule.profileID), !seen.contains(rule.id) else { return false }
             seen.insert(rule.id)
@@ -176,6 +200,7 @@ final class RoutingRuleStore {
         var seen = Set<String>()
         for rule in rules {
             guard RuleRouting.normalizedHost(rule.host) == rule.host else { throw RuleError.invalidHost }
+            guard rule.kind != .urlDomain || rule.pathPrefix == nil else { throw RuleError.invalidPathPrefix }
             guard rule.pathPrefix.map({ RuleRouting.normalizedPathPrefix($0) == $0 }) ?? true else { throw RuleError.invalidPathPrefix }
             guard BrowserProfile.validID(rule.profileID) else { throw RuleError.invalidProfile }
             guard seen.insert(rule.id).inserted else { throw RuleError.duplicateHost }

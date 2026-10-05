@@ -126,11 +126,63 @@ final class BrowserChooserTests: XCTestCase {
         let settings = SettingsWindowController(store: store, profiles: [BrowserProfile(browser: .safari, directory: nil, name: "Safari")], closed: {})
         XCTAssertEqual(settings.window?.title, "Routing settings")
         XCTAssertEqual(store.load().count, 1)
-        XCTAssertEqual(settings.window?.contentLayoutRect.size, NSSize(width: 560, height: 490))
+        XCTAssertEqual(settings.window?.contentLayoutRect.size, NSSize(width: 560, height: 520))
         settings.beginEditingRule(at: 0)
         XCTAssertNil(settings.selectedProfileID)
         XCTAssertNotNil(settings.validationMessage)
     }
+    func testDomainInURLDecodesOnceAndUsesDomainBoundaries() {
+        let rule = RoutingRule(host: "personal.example.com", profileID: "edge:Default", matchKind: .urlDomain)
+        for text in ["https://personal.example.com/", "https://www.personal.example.com/", "https://accounts.example.org/?authuser=person%40personal.example.com", "https://example.org/personal.example.com/file", "https://example.org/?domain=PERSONAL.EXAMPLE.COM", "https://example.org/?next=https%3A%2F%2Fpersonal.example.com%2F"] {
+            XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: text)!, in: [rule]), rule, text)
+        }
+        for text in ["https://notpersonal.example.com/", "https://personal.example.com.evil.test/", "https://personal.example.com-evil.test/", "https://example.org/?email=person%40personal.example.com.evil", "https://example.org/?domain=personal.example.com%2Eevil", "https://example.org/?domain=personal%252Eexample.com", "https://example.org/?domain=personal.example.com1", "https://example.org/?domain=personal.example.com%C3%A9", "https://example.org/?domain=%C3%A9personal.example.com", "https://example.org/?domain=personal.example.com%E3%80%82evil.test", "https://example.org/?domain=personal.example.com%EF%BC%8Eevil.test", "https://example.org/?domain=personal.example.com%EF%BD%A1evil.test"] {
+            XCTAssertNil(RuleRouting.matchingRule(for: URL(string: text)!, in: [rule]), text)
+        }
+        var disabled = rule
+        disabled.enabled = false
+        XCTAssertNil(RuleRouting.matchingRule(for: URL(string: "https://personal.example.com")!, in: [disabled]))
+        let work = RoutingRule(host: "work.example.com", profileID: "chrome:Default", pathPrefix: "/acme")
+        XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: "https://work.example.com/acme/repo?authuser=person%40personal.example.com")!, in: [rule, work]), work)
+    }
+
+    func testDomainRuleStoreAndCLIKeepLegacyCompatibility() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        let rule = RoutingRule(host: "personal.example.com", profileID: "edge:Default", matchKind: .urlDomain)
+        let host = RoutingRule(host: rule.host, profileID: "chrome:Default")
+        try store.save([rule, host])
+        XCTAssertEqual(store.load(), [rule, host])
+        XCTAssertThrowsError(try store.save([RoutingRule(host: rule.host, profileID: rule.profileID, pathPrefix: "/path", matchKind: .urlDomain)]))
+        XCTAssertEqual(AddRuleArguments.parse([rule.host, "--url-domain", "--profile", rule.profileID])?.matchKind, .urlDomain)
+        XCTAssertEqual(AddRuleArguments.parse([rule.host, "--profile", rule.profileID, "--url-domain"])?.matchKind, .urlDomain)
+        XCTAssertNil(AddRuleArguments.parse([rule.host, "--url-domain", "--path-prefix", "/acme", "--profile", rule.profileID]))
+    }
+
+    @MainActor func testSafeLinkDomainRuleLaunchesOriginalAndIgnoresWrapperMetadata() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        let rule = RoutingRule(host: "personal.example.com", profileID: "safari:safari", matchKind: .urlDomain)
+        try store.save([rule])
+        let profile = BrowserProfile(browser: .safari, directory: nil, name: "Safari")
+        var opened: [URL] = []
+        var fallbacks: [URL] = []
+        let app = AppDelegate(ruleStore: store, profileProvider: { ([profile], []) }, browserOpener: { url, _, done in opened.append(url); done(.success(())) }, fallbackObserver: { url, _ in fallbacks.append(url) })
+        let matching = URL(string: "https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Faccounts.example.org%2F%3Fauthuser%3Dperson%2540personal.example.com&data=opaque")!
+        let metadataOnly = URL(string: "https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Faccounts.example.org%2F&data=personal.example.com")!
+        app.application(NSApplication.shared, open: [matching, metadataOnly])
+        XCTAssertEqual(opened, [matching])
+        XCTAssertEqual(fallbacks, [metadataOnly])
+        let settings = SettingsWindowController(store: store, profiles: [profile], closed: {})
+        settings.beginEditingRule(at: 0)
+        XCTAssertEqual(settings.selectedMatchKind, .urlDomain)
+        XCTAssertEqual(settings.selectedProfileID, profile.id)
+    }
+
     func testPathPrefixMatchingUsesWholeSegmentsAndSpecificRuleWins() {
         let hostRule = RoutingRule(host: "github.com", profileID: "safari:safari")
         let orgRule = RoutingRule(host: "github.com", profileID: "chrome:Default", pathPrefix: "/acme")

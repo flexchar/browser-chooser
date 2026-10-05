@@ -47,16 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if args.contains("--settings") { showSettings(); return }
         if let index = args.firstIndex(of: "--add-rule") {
             guard let request = AddRuleArguments.parse(Array(args.dropFirst(index + 1))) else {
-                fputs("Usage: --add-rule HOST [--path-prefix /path] --profile browser:directory\n", stderr)
+                fputs("Usage: --add-rule HOST [--path-prefix /path | --url-domain] --profile browser:directory\n", stderr)
                 exit(2)
             }
             let profiles = availableProfiles().profiles
-            let requestedRule = RoutingRule(host: request.host, profileID: request.profileID, pathPrefix: request.pathPrefix)
+            let requestedRule = RoutingRule(host: request.host, profileID: request.profileID, pathPrefix: request.pathPrefix, matchKind: request.matchKind)
             guard let profile = RuleRouting.availableProfile(for: requestedRule, profiles: profiles) else {
                 fputs("Unavailable profile\n", stderr); exit(2)
             }
             var rules = ruleStore.load().filter { $0.id != requestedRule.id }
-            rules.append(RoutingRule(host: request.host, profileID: profile.id, pathPrefix: request.pathPrefix))
+            rules.append(RoutingRule(host: request.host, profileID: profile.id, pathPrefix: request.pathPrefix, matchKind: request.matchKind))
             do { try ruleStore.save(rules); print("Saved \(request.host)\(request.pathPrefix ?? "") → \(profile.id)") }
             catch { fputs("Cannot save rule: \(error.localizedDescription)\n", stderr); exit(2) }
             NSApp.terminate(nil); return
