@@ -17,7 +17,7 @@ I've been enjoying prompting my AI agent, Codex, on the side to build small, pra
 
 ![Manual web link entry with a demo URL](docs/screenshots/url-entry.png)
 
-Chrome and Edge profile names come from local browser metadata when the chooser opens. The app does not read cookies or account credentials. Routing rules are stored locally as a host and browser/profile directory ID, not the URL path or query string.
+Chrome and Edge profile names come from local browser metadata when the chooser opens. The app does not read cookies or account credentials.
 
 ## Routing rules
 
@@ -32,6 +32,26 @@ APP='build/Browser Chooser.app/Contents/MacOS/BrowserChooser'
 ```
 
 `--explain-route` is a dry run and doesn't open a browser. `"$APP" --settings` opens Settings.
+
+## Where settings live
+
+The installed app uses `UserDefaults.standard` for the `dk.lvc.browserchooser` application domain, normally stored at `~/Library/Preferences/dk.lvc.browserchooser.plist`. The `routingRules.v1` key holds JSON-encoded data: each rule saves a normalized `host`, a browser/profile directory `profileID`, and an `enabled` flag. For example, `work.example.com` can point to `chrome:Default`. Rules don't save email addresses, full URLs, paths, queries, cookies, or credentials. They stay local and aren't uploaded to GitHub.
+
+An enabled rule matches that exact host for both HTTP and HTTPS links, regardless of path. Disabled rules and unmatched hosts open the chooser. If the browser or saved profile directory isn't available, the chooser opens with a warning. App updates keep the same preferences; when moving to another Mac, check the profile IDs because its browser directories may differ.
+
+Settings is the safest place to edit rules. macOS caches preferences, so don't hand-edit the plist. Once you've saved a rule, quit Browser Chooser and back up the whole app preferences domain to a private file outside this repo:
+
+```sh
+defaults export dk.lvc.browserchooser "$HOME/browser-chooser-settings.plist"
+```
+
+To restore it, quit the app, then run:
+
+```sh
+defaults import dk.lvc.browserchooser "$HOME/browser-chooser-settings.plist"
+```
+
+The backup can reveal sites you route, so keep it private. Importing may replace current preferences; reopen the app and check the rules afterward.
 
 ## Build and try it
 
