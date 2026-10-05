@@ -2,6 +2,93 @@ import XCTest
 @testable import BrowserChooser
 
 final class BrowserChooserTests: XCTestCase {
+    func testRuleNormalizesHostOnlyAndRejectsInvalidHosts() {
+        XCTAssertEqual(RuleRouting.normalizedHost(" HTTPS://Work.Example.com./tickets?id=secret "), "work.example.com")
+        XCTAssertEqual(RuleRouting.normalizedHost("work.example.com"), "work.example.com")
+        for invalid in ["", ".work.example.com", "work.example.com..", "work..example.com", "https://user:pass@work.example.com", "file://work.example.com", "localhost:bad", "https://work.example.com:bad/"] {
+            XCTAssertNil(RuleRouting.normalizedHost(invalid), invalid)
+        }
+    }
+
+    func testRuleMatchesOnlyExactHostAndEnabledWebLinks() {
+        let rule = RoutingRule(host: "work.example.com", profileID: "chrome:Default")
+        let urls = ["https://work.example.com/a?secret=1", "http://WORK.EXAMPLE.COM/b"]
+        for raw in urls { XCTAssertEqual(RuleRouting.matchingRule(for: URL(string: raw)!, in: [rule]), rule) }
+        for raw in ["https://sub.work.example.com", "https://work.example.com.evil.test", "https://other.example.com", "file://work.example.com/file"] {
+            XCTAssertNil(RuleRouting.matchingRule(for: URL(string: raw)!, in: [rule]), raw)
+        }
+        XCTAssertNil(RuleRouting.matchingRule(for: URL(string: urls[0])!, in: [RoutingRule(host: rule.host, profileID: rule.profileID, enabled: false)]))
+    }
+
+    func testRuleStorePersistsAndRejectsCollisionsWithoutRealPreferences() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        let rule = RoutingRule(host: "work.example.com", profileID: "chrome:Default")
+        try store.save([rule])
+        XCTAssertEqual(RoutingRuleStore(defaults: defaults).load(), [rule])
+        XCTAssertThrowsError(try store.save([rule, rule]))
+        XCTAssertEqual(store.load(), [rule])
+    }
+
+    func testMissingProfileDirectoryForcesChooser() {
+        let rule = RoutingRule(host: "work.example.com", profileID: "chrome:Default")
+        let profile = BrowserProfile(browser: .chrome, directory: "Default", name: "Work")
+        XCTAssertNil(RuleRouting.availableProfile(for: rule, profiles: [profile], directoryExists: { _ in false }))
+        XCTAssertEqual(RuleRouting.availableProfile(for: rule, profiles: [profile], directoryExists: { _ in true }), profile)
+        XCTAssertNil(RuleRouting.availableProfile(for: rule, profiles: [BrowserProfile(browser: .edge, directory: "Default", name: "Work")], directoryExists: { _ in true }))
+    }
+
+    @MainActor func testSettingsWindowConstructsWithMissingRuleTarget() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        try store.save([RoutingRule(host: "work.example.com", profileID: "chrome:Profile 9")])
+        let settings = SettingsWindowController(store: store, profiles: [BrowserProfile(browser: .safari, directory: nil, name: "Safari")], closed: {})
+        XCTAssertEqual(settings.window?.title, "Routing settings")
+        XCTAssertEqual(store.load().count, 1)
+        XCTAssertEqual(settings.window?.contentLayoutRect.size, NSSize(width: 560, height: 430))
+        settings.beginEditingRule(at: 0)
+        XCTAssertNil(settings.selectedProfileID)
+        XCTAssertNotNil(settings.validationMessage)
+    }
+
+    @MainActor func testAutomaticRoutesSerializeAndFailureReturnsSameURLToChooser() throws {
+        let suite = "test.browserchooser.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RoutingRuleStore(defaults: defaults)
+        try store.save([RoutingRule(host: "work.example.com", profileID: "safari:safari")])
+        let profile = BrowserProfile(browser: .safari, directory: nil, name: "Safari")
+        var opened: [URL] = []
+        var completions: [@MainActor (Result<Void, Error>) -> Void] = []
+        var fallbacks: [URL] = []
+        let app = AppDelegate(ruleStore: store, profileProvider: { ([profile], []) }, browserOpener: { url, _, completion in
+            opened.append(url)
+            completions.append(completion)
+        }, fallbackObserver: { url, _ in fallbacks.append(url) })
+        let first = URL(string: "https://work.example.com/one")!
+        let second = URL(string: "https://work.example.com/two")!
+        app.application(NSApplication.shared, open: [first, second])
+        XCTAssertEqual(opened, [first])
+        XCTAssertFalse(app.canPresentEntry, "cold-start URL delivery must suppress the empty URL entry window")
+        XCTAssertTrue(fallbacks.isEmpty)
+        completions[0](.success(()))
+        XCTAssertEqual(opened, [first, second])
+        completions[1](.failure(BrowserLaunchError.exited(1)))
+        XCTAssertEqual(fallbacks, [second])
+        completions[0](.success(()))
+        XCTAssertEqual(fallbacks, [second], "stale completion must not present a second chooser")
+    }
+
+    @MainActor func testHiddenChooserDoesNotCloseOnSettingsFocus() {
+        let chooser = ChooserWindowController(url: URL(string: "https://example.com")!, profiles: [BrowserProfile(browser: .safari, directory: nil, name: "Safari")], issues: [], choose: { _, _ in }, closed: { _ in })
+        XCTAssertTrue(chooser.shouldCloseOnResignKey)
+        chooser.hideForSettings()
+        XCTAssertFalse(chooser.shouldCloseOnResignKey)
+    }
     func testRouterAcceptsOnlyWebURLs() {
         XCTAssertEqual(URLRouter.validatedWebURL(from: ["BrowserChooser", "https://example.com/a?b=c"])?.host, "example.com")
         XCTAssertNil(URLRouter.validatedWebURL(from: ["BrowserChooser", "zoommtg://zoom.us/join"]))

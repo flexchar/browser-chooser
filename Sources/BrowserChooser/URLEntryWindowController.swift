@@ -5,12 +5,14 @@ import Foundation
 final class URLEntryWindowController: NSWindowController, NSWindowDelegate {
     private let submit: @MainActor (URL) -> Void
     private let closed: @MainActor (URLEntryWindowController) -> Void
+    private let settings: @MainActor () -> Void
     private let urlField = NSTextField()
     private let errorLabel = NSTextField(labelWithString: "Enter an http or https URL with a host.")
 
-    init(submit: @escaping @MainActor (URL) -> Void,
+    init(submit: @escaping @MainActor (URL) -> Void, settings: @escaping @MainActor () -> Void = {},
          closed: @escaping @MainActor (URLEntryWindowController) -> Void) {
         self.submit = submit
+        self.settings = settings
         self.closed = closed
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 160),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -27,9 +29,10 @@ final class URLEntryWindowController: NSWindowController, NSWindowDelegate {
         urlField.action = #selector(openURL)
         let button = NSButton(title: "Open chooser", target: self, action: #selector(openURL))
         button.bezelStyle = .rounded
+        let settingsButton = NSButton(title: "Settings…", target: self, action: #selector(openSettings))
         errorLabel.textColor = .systemRed
         errorLabel.isHidden = true
-        for control in [heading, urlField, errorLabel, button] {
+        for control in [heading, urlField, errorLabel, button, settingsButton] {
             control.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(control)
         }
@@ -43,6 +46,8 @@ final class URLEntryWindowController: NSWindowController, NSWindowDelegate {
             errorLabel.topAnchor.constraint(equalTo: urlField.bottomAnchor, constant: 6),
             button.trailingAnchor.constraint(equalTo: urlField.trailingAnchor),
             button.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
+            ,settingsButton.leadingAnchor.constraint(equalTo: heading.leadingAnchor),
+            settingsButton.centerYAnchor.constraint(equalTo: button.centerYAnchor)
         ])
         window.contentView = content
         window.initialFirstResponder = urlField
@@ -59,4 +64,5 @@ final class URLEntryWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) { closed(self) }
+    @objc private func openSettings() { settings() }
 }

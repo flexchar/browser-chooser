@@ -65,6 +65,13 @@ struct BrowserProfile: Identifiable, Equatable, Sendable {
     }
 
     var menuName: String { id == "edge:Default" ? "Personal" : name }
+
+    static func validID(_ id: String) -> Bool {
+        if id == "safari:safari" { return true }
+        let parts = id.split(separator: ":", omittingEmptySubsequences: false)
+        return parts.count == 2 && ["chrome", "edge"].contains(String(parts[0])) &&
+            !parts[1].isEmpty && !parts[1].contains("/") && !parts[1].contains("\\")
+    }
 }
 
 enum ProfilePresentation {

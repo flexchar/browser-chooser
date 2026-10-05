@@ -6,17 +6,20 @@ final class ChooserWindowController: NSWindowController {
     let requestID = UUID()
     private let choose: @MainActor (ChooserWindowController, BrowserProfile) -> Void
     private let closed: @MainActor (ChooserWindowController) -> Void
+    private let settings: @MainActor () -> Void
     private var isLaunching = false
+    private var isShowingSettings = false
 
-    init(url: URL, profiles: [BrowserProfile], issues: [String], choose: @escaping @MainActor (ChooserWindowController, BrowserProfile) -> Void,
+    init(url: URL, profiles: [BrowserProfile], issues: [String], settings: @escaping @MainActor () -> Void = {}, choose: @escaping @MainActor (ChooserWindowController, BrowserProfile) -> Void,
          closed: @escaping @MainActor (ChooserWindowController) -> Void) {
         self.choose = choose
         self.closed = closed
+        self.settings = settings
         let window = ChooserPanel(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
         window.title = "Choose a browser"
         super.init(window: window)
         window.delegate = self
-        window.contentViewController = ChooserView(url: url, profiles: profiles, issues: issues) { [weak self] profile in
+        window.contentViewController = ChooserView(url: url, profiles: profiles, issues: issues, settings: { [weak self] in self?.openSettings() }) { [weak self] profile in
             guard let self else { return }
             self.choose(self, profile)
         }
@@ -36,6 +39,10 @@ final class ChooserWindowController: NSWindowController {
     }
 
     func finishLaunch() { isLaunching = false }
+    private func openSettings() { settings() }
+    func hideForSettings() { isShowingSettings = true; window?.orderOut(nil) }
+    func resumeAfterSettings() { isShowingSettings = false; showWindow(nil) }
+    var shouldCloseOnResignKey: Bool { !isLaunching && !isShowingSettings && window?.attachedSheet == nil }
 }
 
 private final class ChooserPanel: NSPanel {
@@ -76,7 +83,7 @@ extension ChooserWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) { closed(self) }
 
     func windowDidResignKey(_ notification: Notification) {
-        if !isLaunching, window?.attachedSheet == nil { close() }
+        if shouldCloseOnResignKey { close() }
     }
 }
 
@@ -93,12 +100,14 @@ final class ChooserView: NSViewController {
 
     private let profiles: [BrowserProfile]
     private let choose: @MainActor (BrowserProfile) -> Void
+    private let settings: @MainActor () -> Void
     private var keyMonitor: Any?
     private var rows: [ChooserRowButton] = []
 
-    init(url: URL, profiles: [BrowserProfile], issues: [String], choose: @escaping @MainActor (BrowserProfile) -> Void) {
+    init(url: URL, profiles: [BrowserProfile], issues: [String], settings: @escaping @MainActor () -> Void = {}, choose: @escaping @MainActor (BrowserProfile) -> Void) {
         self.profiles = profiles
         self.choose = choose
+        self.settings = settings
         super.init(nibName: nil, bundle: nil)
 
         let background = NSView()
@@ -154,6 +163,14 @@ final class ChooserView: NSViewController {
         host.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(host)
 
+        let settingsButton = NSButton(title: "⚙", target: self, action: #selector(openSettings))
+        settingsButton.isBordered = false
+        settingsButton.font = .systemFont(ofSize: 15)
+        settingsButton.toolTip = "Routing settings"
+        settingsButton.setAccessibilityLabel("Routing settings")
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(settingsButton)
+
         if !issues.isEmpty {
             let warning = NSTextField(labelWithString: "⚠")
             warning.font = .systemFont(ofSize: 11)
@@ -180,6 +197,9 @@ final class ChooserView: NSViewController {
             host.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 30),
             host.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -30),
             host.centerYAnchor.constraint(equalTo: background.bottomAnchor, constant: -Self.footerHeight / 2)
+            ,settingsButton.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -8),
+            settingsButton.centerYAnchor.constraint(equalTo: host.centerYAnchor),
+            settingsButton.widthAnchor.constraint(equalToConstant: 24)
         ])
     }
 
@@ -205,6 +225,7 @@ final class ChooserView: NSViewController {
     }
 
     @objc private func selectProfile(_ sender: NSButton) { choose(profiles[sender.tag]) }
+    @objc private func openSettings() { settings() }
 }
 
 private final class FlippedStackView: NSStackView {
